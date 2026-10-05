@@ -22,7 +22,7 @@ import (
 const PORT = 3000
 
 type AuthInitResponse struct {
-	Url string `json:"url"`
+	URL string `json:"url"`
 }
 
 type AuthVerifyPayload struct {
@@ -32,7 +32,7 @@ type AuthVerifyPayload struct {
 
 type User struct {
 	Email     string `json:"email"`
-	SessionId string `json:"session_id"`
+	SessionID string `json:"session_id"`
 }
 
 type AuthEntry struct {
@@ -48,15 +48,15 @@ func generateDeviceSecret() (string, error) {
 	return base64.URLEncoding.EncodeToString(key), nil
 }
 
-var auth_map map[string]AuthEntry
+var authMap map[string]AuthEntry
 
 func main() {
 	err := godotenv.Load()
 	if err != nil {
 		log.Fatal("Error loading .env file")
 	}
-	auth_map = make(map[string]AuthEntry)
-	webAppUrl := os.Getenv("WEB_APP_URL")
+	authMap = make(map[string]AuthEntry)
+	webAppURL := os.Getenv("WEB_APP_URL")
 	jwksJSON := []byte(os.Getenv("JWKS_JSON"))
 
 	set, err := jwk.Parse(jwksJSON)
@@ -76,18 +76,18 @@ func main() {
 
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
-	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
+	r.Get("/", func(w http.ResponseWriter, _ *http.Request) {
 		w.Write([]byte("Hello World!"))
 	})
 
-	r.Post("/auth/init", func(w http.ResponseWriter, r *http.Request) {
+	r.Post("/auth/init", func(w http.ResponseWriter, _ *http.Request) {
 		deviceCode, _ := generateDeviceSecret()
-		url := fmt.Sprintf("%s/auth/login/%s", webAppUrl, deviceCode)
-		auth_map[deviceCode] = AuthEntry{Verified: false}
+		url := fmt.Sprintf("%s/auth/login/%s", webAppURL, deviceCode)
+		authMap[deviceCode] = AuthEntry{Verified: false}
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(201)
-		json.NewEncoder(w).Encode(AuthInitResponse{Url: url})
+		json.NewEncoder(w).Encode(AuthInitResponse{URL: url})
 	})
 
 	r.Post("/auth/verify", func(w http.ResponseWriter, r *http.Request) {
@@ -97,7 +97,7 @@ func main() {
 			return
 		}
 
-		token, err := jwt.Parse(payload.Jwt, func(token *jwt.Token) (any, error) {
+		token, err := jwt.Parse(payload.Jwt, func(_ *jwt.Token) (any, error) {
 			return &pubKey, nil
 		}, jwt.WithValidMethods([]string{"ES256"}))
 
@@ -114,15 +114,15 @@ func main() {
 				http.Error(w, "Invalid payload", http.StatusUnauthorized)
 				return
 			}
-			sessionId, ok := claims["session_id"].(string)
+			sessionID, ok := claims["session_id"].(string)
 
 			if !ok {
 				http.Error(w, "Invalid payload", http.StatusUnauthorized)
 				return
 			}
-			user := User{Email: email, SessionId: sessionId}
+			user := User{Email: email, SessionID: sessionID}
 
-			auth, ok := auth_map[payload.DeviceCode]
+			auth, ok := authMap[payload.DeviceCode]
 
 			if !ok {
 				http.Error(w, "we don't expect this", http.StatusUnauthorized)
@@ -132,7 +132,7 @@ func main() {
 			auth.Verified = true
 			auth.User = user
 
-			auth_map[payload.DeviceCode] = auth
+			authMap[payload.DeviceCode] = auth
 
 			// return 200
 			w.Header().Set("Content-Type", "application/json")
@@ -145,7 +145,7 @@ func main() {
 
 	r.Get("/auth/verify", func(w http.ResponseWriter, r *http.Request) {
 		deviceCode := r.URL.Query().Get("device_code")
-		user, ok := auth_map[deviceCode]
+		user, ok := authMap[deviceCode]
 
 		if !ok {
 			http.Error(w, "Unauthorized!", http.StatusUnauthorized)
